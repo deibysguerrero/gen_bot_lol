@@ -5,14 +5,14 @@ const { REST } = require('@discordjs/rest');
 const fs = require('fs');
 const http = require('http'); 
 
-// --- SERVER PARA RAILWAY ---
+// --- SERVER PARA RAILWAY/RENDER ---
 const port = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Reze Gen Is Online!');
+    res.end('Eminence Gen Is Online!');
 }).listen(port, '0.0.0.0');
 
-// Activamos los Intents necesarios, incluyendo MessageContent para el "$"
+// Intents necesarios incluyendo MessageContent para que funcione el prefijo "$"
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -80,11 +80,11 @@ client.once('ready', async () => {
     
     try {
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('Commands synchronized.');
+        console.log('🚀 Commands synchronized with Discord.');
     } catch (e) { console.error(e); }
 });
 
-// --- LÓGICA COMPARTIDA ---
+// --- LÓGICA COMPARTIDA (Funciones globales) ---
 
 const getPath = (serviceName, stockType) => {
     if (stockType === 'booster') return './boosters.txt';
@@ -150,7 +150,7 @@ async function handleFGen(targetService, user, member, responder) {
                     { name: 'Account type', value: `\`${service.toUpperCase()}\``, inline: true },
                     { name: 'Type', value: '`Free`', inline: true }
                 )
-                .setFooter({ text: 'Check your DMs' });
+                .setFooter({ text: 'Eminence Gen' });
 
             await responder.reply({ embeds: [serverEmbed] });
         } catch {
@@ -167,7 +167,7 @@ async function handleBGen(user, member, responder) {
     const bypassCooldown = isStaff || isBooster;
 
     if (!isStaff && !isBooster) {
-        return responder.reply({ content: 'This command is only for server boosters!', ephemeral: true });
+        return responder.reply({ content: '❌ This command is only for server boosters and staff!', ephemeral: true });
     }
 
     if (!bypassCooldown && cooldowns.has(user.id)) {
@@ -211,7 +211,7 @@ async function handleBGen(user, member, responder) {
                     { name: 'Account type', value: '`BOOSTER STOCK`', inline: true },
                     { name: 'Type', value: '`Booster`', inline: true }
                 )
-                .setFooter({ text: 'Check your DMs' });
+                .setFooter({ text: 'Eminence Gen' });
 
             await responder.reply({ embeds: [serverEmbed] });
         } catch {
@@ -224,7 +224,7 @@ async function handleBGen(user, member, responder) {
 
 async function handleStock(responder) {
     const embed = new EmbedBuilder()
-        .setTitle('Current Stock')
+        .setTitle('📊 Current Stock')
         .setColor(0x5865F2)
         .addFields(
             { name: 'Crunchyroll', value: `${countStock('./stock.txt')}`, inline: true },
@@ -237,11 +237,10 @@ async function handleStock(responder) {
     await responder.reply({ embeds: [embed] });
 }
 
-// --- EVENTO 1: COMANDOS CON PREFIJO ($) ---
+// --- EVENTO 1: ESCUCHAR COMANDOS CON PREFIJO ($) ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
-    // FIX AQUÍ: Se añade el espacio antes del "+" (/ +/) para evitar el SyntaxError
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
@@ -260,7 +259,7 @@ client.on('messageCreate', async message => {
     }
 });
 
-// --- EVENTO 2: SLASH COMMANDS (/) ---
+// --- EVENTO 2: ESCUCHAR SLASH COMMANDS (/) ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user, member } = interaction;
@@ -334,94 +333,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(TOKEN);
-                             
-    if (commandName === 'bgen') {
-        await handleBGen(message.author, message.member, responder);
-    }
 
-    if (commandName === 'stock') {
-        await handleStock(responder);
-    }
-});
-
-
-// --- EVENTO 2: SLASH COMMANDS (/) ---
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    const { commandName, options, user, member } = interaction;
-    
-    const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages);
-
-    // Adaptador para pasarle la interacción limpia a las funciones comunes
-    const responder = {
-        reply: (opts) => interaction.reply(opts)
-    };
-
-    if (commandName === 'fgen') {
-        const service = options.getString('service');
-        await handleFGen(service, user, member, responder);
-    }
-
-    if (commandName === 'bgen') {
-        await handleBGen(user, member, responder);
-    }
-
-    if (commandName === 'stock') {
-        await handleStock(responder);
-    }
-
-    if (commandName === 'clear') {
-        if (!isStaff) {
-            return interaction.reply({ content: "❌ You don't have permission to use this command!", ephemeral: true });
-        }
-
-        const service = options.getString('service');
-        const path = getPath(service, 'free');
-        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File for ${service} not found.`, ephemeral: true });
-        
-        fs.writeFileSync(path, ''); 
-        return interaction.reply({ content: `✅ Stock for **${service}** has been cleared!`, ephemeral: true });
-    }
-
-    if (commandName === 'restock') {
-        if (!isStaff) {
-            return interaction.reply({ content: "❌ You don't have permission to use this command!", ephemeral: true });
-        }
-
-        const service = options.getString('service');
-        const stockType = options.getString('type');
-        const account = options.getString('account');
-        const file = options.getAttachment('file');
-        
-        if (!account && !file) {
-            return interaction.reply({ content: "❌ Provide either an account or a .txt file.", ephemeral: true });
-        }
-
-        await interaction.deferReply({ ephemeral: true });
-
-        const path = getPath(service, stockType);
-        let contentToAdd = '';
-
-        try {
-            if (file) {
-                const response = await fetch(file.url);
-                const text = await response.text();
-                contentToAdd = fs.existsSync(path) ? `\n${text.trim()}` : text.trim();
-            } else if (account) {
-                contentToAdd = fs.existsSync(path) ? ` ${account.trim()}` : account.trim();
-            }
-
-            if (!fs.existsSync(path)) fs.writeFileSync(path, '');
-            fs.appendFileSync(path, contentToAdd);
-
-            const targetName = stockType === 'booster' ? 'Boosters' : service;
-            return interaction.editReply({ content: `✅ Stock for **${targetName}** updated successfully.` });
-        } catch (error) {
-            console.error(error);
-            return interaction.editReply({ content: "❌ Error processing the restock operation." });
-        }
-    }
-});
-
-client.login(TOKEN);
-        
