@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 const fs = require('fs');
@@ -74,7 +75,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'gen' || commandName === 'bgen') {
-        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({ content: '❌ Booster/Staff only!', ephemeral: true });
+        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({ content: '❌ Booster only!', ephemeral: true });
         const service = options.getString('service');
         const path = getPath(service, commandName === 'bgen' ? 'booster' : 'free');
         
@@ -116,4 +117,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(TOKEN);
-    
+            
