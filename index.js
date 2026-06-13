@@ -32,7 +32,7 @@ const getPath = (service, type) => {
         return `./b${s}.txt`;
     }
     
-    return `./{s}.txt`;
+    return `./${s}.txt`;
 };
 
 const commands = [
@@ -78,7 +78,7 @@ client.on('interactionCreate', async interaction => {
         fs.writeFileSync(path, lines.join('\n'));
         try {
             await user.send(`Cuenta de ${service}: \`${acc}\``);
-            interaction.reply({content: '✅ Account Sended To DM.', ephemeral: true});
+            interaction.reply({content: '✅ Account Sent!', ephemeral: true});
         } catch { interaction.reply({content: '❌ Open DMs.', ephemeral: true}); }
     }
 
