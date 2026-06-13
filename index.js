@@ -4,23 +4,14 @@ const { REST } = require('@discordjs/rest');
 const fs = require('fs');
 const http = require('http'); 
 
-// --- SERVER PARA RAILWAY/RENDER ---
 const port = process.env.PORT || 10000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Reze Gen Is Online!');
-}).listen(port, '0.0.0.0');
+http.createServer((req, res) => { res.end('Eminence Gen Is Online!'); }).listen(port, '0.0.0.0');
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds]
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
-
-const cooldowns = new Map();
-const COOLDOWN_TIME = 600000; // 10 minutos
 
 const services = [
     { name: 'Crunchyroll', value: 'crunchyroll' },
@@ -32,136 +23,80 @@ const services = [
     { name: 'CC', value: 'cc' }
 ];
 
-const commands = [
-    new SlashCommandBuilder()
-        .setName('fgen')
-        .setDescription('Generate a free account')
-        .addStringOption(opt => opt.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
-    
-    new SlashCommandBuilder()
-        .setName('bgen')
-        .setDescription('Generate an exclusive account for server boosters and staff')
-        .addStringOption(opt => opt.setName('service').setDescription('Select service').setRequired(true).addChoices(...services)),
-    
-    new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
-    
-    new SlashCommandBuilder()
-        .setName('restock')
-        .setDescription('Add accounts to a service')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addStringOption(opt => opt.setName('service').setDescription('Service').setRequired(true).addChoices(...services))
-        .addStringOption(opt => opt.setName('type').setDescription('Is booster?').setRequired(true).addChoices(
-            { name: 'Free', value: 'free' },
-            { name: 'Booster', value: 'booster' }
-        ))
-        .addStringOption(opt => opt.setName('account').setDescription('user:pass (Optional if file is sent)').setRequired(false))
-        .addAttachmentOption(opt => opt.setName('file').setDescription('Upload a .txt file with accounts').setRequired(false)),
-
-    new SlashCommandBuilder()
-        .setName('clear')
-        .setDescription('Clear all stock from a specific service and type')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addStringOption(opt => opt.setName('service').setDescription('Service to clear').setRequired(true).addChoices(...services))
-        .addStringOption(opt => opt.setName('type').setDescription('Type to clear').setRequired(true).addChoices(
-            { name: 'Free', value: 'free' },
-            { name: 'Booster', value: 'booster' }
-        ))
-].map(c => c.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-client.once('ready', async () => {
-    console.log(`✅ Logged in as ${client.user.tag}`);
-    client.user.setPresence({ status: 'dnd' });
-    
-    try {
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('🚀 Commands updated.');
-    } catch (e) { console.error(e); }
-});
-
-// Lógica flexible para permitir la mezcla
-const getPath = (serviceName, stockType) => {
-    const name = serviceName.toLowerCase();
-    if (name === 'crunchyroll' && stockType === 'booster') return './bstock.txt';
-    if (name === 'cc') return './bvcc.txt';
-    if (stockType === 'booster') return `./b${name}.txt`;
-    return `./${name}.txt`;
+// LÓGICA DE ARCHIVOS: TODO EMPIEZA CON 'b'
+const getPath = (service, type) => {
+    const s = service.toLowerCase();
+    if (type === 'booster') {
+        if (s === 'crunchyroll') return './bstock.txt';
+        if (s === 'cc') return './bvcc.txt';
+        return `./b${s}.txt`;
+    }
+    // Archivos FREE también empiezan con 'b'
+    return `./b${s}.txt`;
 };
+
+const commands = [
+    new SlashCommandBuilder().setName('fgen').setDescription('Generate free account').addStringOption(o => o.setName('service').setRequired(true).addChoices(...services.filter(s => s.value !== 'cc' && s.value !== 'epic'))),
+    new SlashCommandBuilder().setName('bgen').setDescription('Generate booster account').addStringOption(o => o.setName('service').setRequired(true).addChoices(...services)),
+    new SlashCommandBuilder().setName('stock').setDescription('Check stock status'),
+    new SlashCommandBuilder().setName('restock').setDescription('Add accounts').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addStringOption(o => o.setName('service').setRequired(true).addChoices(...services))
+        .addStringOption(o => o.setName('type').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
+        .addStringOption(o => o.setName('account').setRequired(false)).addAttachmentOption(o => o.setName('file').setRequired(false)),
+    new SlashCommandBuilder().setName('clear').setDescription('Clear stock').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addStringOption(o => o.setName('service').setRequired(true).addChoices(...services))
+        .addStringOption(o => o.setName('type').setRequired(true).addChoices({name:'Free',value:'free'},{name:'Booster',value:'booster'}))
+].map(c => c.toJSON());
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user, member } = interaction;
-
     const isStaff = member.permissions.has(PermissionFlagsBits.ManageMessages);
     const isBooster = !!member.premiumSince;
-    const bypassCooldown = isStaff || isBooster;
-
-    if (commandName === 'clear') {
-        if (!isStaff) return interaction.reply({ content: "❌ You Don't Have Permission!", ephemeral: true });
-        
-        const path = getPath(options.getString('service'), options.getString('type'));
-        if (fs.existsSync(path)) fs.writeFileSync(path, ''); 
-        return interaction.reply({ content: `✅ Stock cleared!`, ephemeral: true });
-    }
-
-    if (commandName === 'fgen' || commandName === 'bgen') {
-        if (commandName === 'bgen' && !bypassCooldown) return interaction.reply({ content: '❌ Booster/Staff only!', ephemeral: true });
-
-        const service = options.getString('service');
-        const stockType = commandName === 'bgen' ? 'booster' : 'free';
-        const path = getPath(service, stockType);
-        
-        if (!fs.existsSync(path)) return interaction.reply({ content: `❌ File not found.`, ephemeral: true });
-
-        let fileContent = fs.readFileSync(path, 'utf8').trim();
-        if (!fileContent) return interaction.reply({ content: `❌ Out of stock!`, ephemeral: true });
-
-        let accounts = fileContent.split(/\r?\n/).filter(x => x.trim() !== '');
-        const acc = accounts.shift();
-        fs.writeFileSync(path, accounts.join('\n'));
-            
-        const dmEmbed = new EmbedBuilder()
-            .setTitle('Account Generated!')
-            .setColor(commandName === 'bgen' ? 0xF47FFF : 0xFF6347)
-            .addFields({ name: 'Service', value: `\`${service.toUpperCase()}\``, inline: true }, { name: 'Account', value: `\`${acc}\``, inline: true });
-            
-        try {
-            await user.send({ embeds: [dmEmbed] });
-            if (!bypassCooldown) cooldowns.set(user.id, Date.now());
-            await interaction.reply({ content: '✅ Check your DMs!', ephemeral: true });
-        } catch {
-            await interaction.reply({ content: '❌ Open your DMs!', ephemeral: true });
-        }
-    }
 
     if (commandName === 'stock') {
         await interaction.deferReply({ ephemeral: true });
-        const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split(/\r?\n/).filter(x => x.trim() !== '').length : 0;
-        
-        const embed = new EmbedBuilder().setTitle('📊 Current Stock').setColor(0x5865F2);
-        services.forEach(s => embed.addFields({ name: s.name, value: `Free: \`${count(getPath(s.value, 'free'))}\` | Booster: \`${count(getPath(s.value, 'booster'))}\``, inline: false }));
+        const count = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split(/\r?\n/).filter(x => x.trim()).length : 0;
+        const embed = new EmbedBuilder().setTitle('📊 Stock Actual').setColor(0x5865F2);
+        services.forEach(s => {
+            const freeCount = (s.value === 'cc') ? 0 : count(getPath(s.value, 'free'));
+            embed.addFields({ name: s.name, value: `Free: \`${freeCount}\` | Booster: \`${count(getPath(s.value, 'booster'))}\``, inline: false });
+        });
         await interaction.editReply({ embeds: [embed] });
     }
 
+    if (commandName === 'fgen' || commandName === 'bgen') {
+        if (commandName === 'bgen' && !isStaff && !isBooster) return interaction.reply({content: '❌ Solo Boosters/Staff.', ephemeral: true});
+        const service = options.getString('service');
+        const path = getPath(service, commandName === 'bgen' ? 'booster' : 'free');
+        
+        if (!fs.existsSync(path)) return interaction.reply({content: '❌ Archivo no encontrado.', ephemeral: true});
+        let lines = fs.readFileSync(path, 'utf8').split(/\r?\n/).filter(x => x.trim());
+        if (!lines.length) return interaction.reply({content: '❌ Sin stock.', ephemeral: true});
+
+        const acc = lines.shift();
+        fs.writeFileSync(path, lines.join('\n'));
+        try {
+            await user.send(`Cuenta de ${service}: \`${acc}\``);
+            interaction.reply({content: '✅ Enviada al DM.', ephemeral: true});
+        } catch { interaction.reply({content: '❌ Abre tus DMs.', ephemeral: true}); }
+    }
+
     if (commandName === 'restock') {
-        if (!isStaff) return interaction.reply({ content: "❌ You Don't Have Permission!", ephemeral: true });
-
+        if (!isStaff) return interaction.reply({content: "❌ No tienes permiso.", ephemeral: true});
         const path = getPath(options.getString('service'), options.getString('type'));
-        let contentToAdd = '';
-        if (options.getAttachment('file')) {
-            const response = await fetch(options.getAttachment('file').url);
-            contentToAdd = await response.text();
-        } else {
-            contentToAdd = options.getString('account');
-        }
+        let contentToAdd = options.getAttachment('file') ? await (await fetch(options.getAttachment('file').url)).text() : options.getString('account');
+        const current = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '';
+        fs.writeFileSync(path, current + (current ? '\n' : '') + contentToAdd.trim());
+        interaction.reply({content: '✅ Stock actualizado.', ephemeral: true});
+    }
 
-        const currentContent = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '';
-        fs.writeFileSync(path, currentContent + (currentContent ? '\n' : '') + contentToAdd.trim());
-
-        return interaction.reply({ content: `✅ Stock updated!`, ephemeral: true });
+    if (commandName === 'clear') {
+        if (!isStaff) return interaction.reply({content: "❌ No tienes permiso.", ephemeral: true});
+        fs.writeFileSync(getPath(options.getString('service'), options.getString('type')), '');
+        interaction.reply({content: '✅ Limpiado.', ephemeral: true});
     }
 });
 
-client.login(TOKEN);
-    
+client.login(process.env.DISCORD_TOKEN);
+     
